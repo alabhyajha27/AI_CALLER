@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual Environment
+venv/
+.env
+
+# Audio files
+*.wav
+*.mp3
+
+# Whisper cache (optional)
+.cache/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
