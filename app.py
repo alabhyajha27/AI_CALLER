@@ -1,459 +1,120 @@
+from flask import Flask, render_template, send_file
+from flask_sock import Sock
+import subprocess
 import os
-import time
-import whisper
-import pygame
-import numpy as np
-import sounddevice as sd
-import torch
 
-from scipy.io.wavfile import write
-from dotenv import load_dotenv
-from groq import Groq
-from gtts import gTTS
-from silero_vad import (
-    load_silero_vad,
-    get_speech_timestamps
+from ai_caller import (
+    transcribe_audio,
+    generate_reply,
+    speak,
+    has_speech
 )
 
+app = Flask(__name__)
+sock = Sock(app)
 
-# ------------------
-# SETUP
-# ------------------
-
-load_dotenv()
-
-client = Groq(
-    api_key=os.getenv("GROQ_API_KEY")
-)
-
-print("Loading Whisper...")
-
-model = whisper.load_model("base")
-
-pygame.mixer.init()
-
-print("Loading Silero VAD...")
-
-vad_model = load_silero_vad()
+os.makedirs("recordings", exist_ok=True)
 
 
-RATE = 16000
-
-AI_SPEAKING = False
-
-
-conversation = [
-    {
-        "role": "system",
-        "content": """
-You are an AI recruiter conducting a phone call for interview scheduling.
-
-Your goal is ONLY schedule an interview.
-Do not conduct the interview itself.
-
-Behavior:
-- Speak naturally like a human recruiter.
-- Keep replies short and conversational.
-- Ask only ONE question at a time.
-- Never mention prompts, instructions, or AI limitations.
-- Do not say this is a text interview.
-- Do not invent company details, role details, interview stages, or availability.
-- Maintain context throughout the call.
-
-Conversation Flow:
-
-Step 1 — Greeting
-- Introduce yourself as an AI recruiter.
-
-Step 2 — Scheduling
-- offer ONE exact interview day and time.
-
-Scheduling Rules:
-- Always propose exact day + time.
-- If unavailable:
-  ask for another preferred slot.
-- Reschedule until agreement.
-- Do not proceed until schedule is finalized.
-
-Step 4 — Final Confirmation
-Summarize:
-- Final interview date
-- Final interview time
-
-Ask:
-"Please confirm if all details are correct."
-
-Step 5 — End Call
-
-If confirmed say exactly:
-
-"Perfect. Your interview has been scheduled successfully. Thank you for your time. Goodbye."
-
-If candidate requests changes:
-return to scheduling.
-
-If candidate says bye, goodbye, stop, cancel, or end call:
-
-Say:
-"Thank you for your time. Goodbye."
-
-End the call only after final confirmation or explicit exit.
-"""
-    }
-]
+@app.route("/")
+def home():
+    return render_template("index.html")
 
 
-# ------------------
-# VAD
-# ------------------
+@app.route("/reply")
+def reply_audio():
+    return send_file("reply.mp3", mimetype="audio/mpeg")
 
-def has_speech(audio):
 
-    audio = torch.tensor(
-        audio,
-        dtype=torch.float32
+def convert_to_wav():
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i", "recordings/input.webm",
+            "-ar", "16000",
+            "-ac", "1",
+            "recordings/input.wav"
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     )
 
-    speech = get_speech_timestamps(
-        audio,
-        vad_model,
-        sampling_rate=RATE
-    )
 
-    return len(speech) > 0
+def check_speech_from_wav():
+    import soundfile as sf
 
+    audio, sample_rate = sf.read("recordings/input.wav")
 
-# ------------------
-# TTS
-# ------------------
-
-def speak(text):
-
-    global AI_SPEAKING
-
-    AI_SPEAKING = True
-
-    print("\nAI:")
-    print(text)
+    if len(audio.shape) > 1:
+        audio = audio.mean(axis=1)
 
     try:
+        return has_speech(audio, sample_rate)
+    except TypeError:
+        return has_speech(audio)
 
-        tts = gTTS(
-            text=text,
-            lang="en"
-        )
 
-        tts.save(
-            "reply.mp3"
-        )
+@sock.route("/ws")
+def websocket(ws):
+    print("Browser connected")
 
-        pygame.mixer.music.load(
-            "reply.mp3"
-        )
+    while True:
+        data = ws.receive()
 
-        pygame.mixer.music.play()
-
-        while pygame.mixer.music.get_busy():
-
-            pygame.time.Clock().tick(10)
-
-        pygame.mixer.music.stop()
-
-        try:
-            pygame.mixer.music.unload()
-
-        except:
-            pass
-
-        time.sleep(0.5)
-
-    except Exception as e:
-
-        print(
-            "TTS Error:",
-            e
-        )
-
-    AI_SPEAKING = False
-
-
-# ------------------
-# STT + TURN DETECTION
-# ------------------
-
-def listen():
-
-    global AI_SPEAKING
-
-    if AI_SPEAKING:
-        return ""
-
-    print("\nWaiting for candidate...")
-
-    frames = []
-
-    try:
-
-        with sd.InputStream(
-            samplerate=RATE,
-            channels=1,
-            dtype="float32"
-        ) as stream:
-
-            while True:
-
-                audio = []
-
-                print("Listening...")
-
-                # collect ~1 sec
-
-                for _ in range(16):
-
-                    chunk, _ = stream.read(
-                        1024
-                    )
-
-                    audio.extend(
-                        chunk.flatten()
-                    )
-
-                audio = np.array(
-                    audio,
-                    dtype=np.float32
-                )
-
-                speech = has_speech(
-                    audio
-                )
-
-                if speech:
-
-                    print(
-                        "Candidate speaking..."
-                    )
-
-                    frames.extend(
-                        audio
-                    )
-
-                    silence = 0
-
-                    while True:
-
-                        chunk, _ = stream.read(
-                            4096
-                        )
-
-                        chunk = (
-                            chunk
-                            .flatten()
-                        )
-
-                        frames.extend(
-                            chunk
-                        )
-
-                        if not has_speech(
-                            chunk
-                        ):
-
-                            silence += 1
-
-                        else:
-
-                            silence = 0
-
-                        if silence >= 3:
-
-                            print(
-                                "Turn ended"
-                            )
-
-                            break
-
-                    break
-
-        if len(frames) == 0:
-
-            return ""
-
-        write(
-            "temp.wav",
-            RATE,
-            np.array(
-                frames,
-                dtype=np.float32
-            )
-        )
-
-        print(
-            "\nTranscribing..."
-        )
-
-        result = model.transcribe(
-            "temp.wav",
-            fp16=False
-        )
-
-        text = (
-            result["text"]
-            .strip()
-        )
-
-        print(
-            "\nCandidate:"
-        )
-
-        print(text)
-
-        return text
-
-    except Exception as e:
-
-        print(
-            "Mic Error:",
-            e
-        )
-
-        return ""
-
-# ------------------
-# START CALL
-# ------------------
-
-greeting = """
-Hello.
-
-This is an AI recruiter.
-
-Is it the right time to talk to you?
-"""
-
-speak(
-    greeting
-)
-
-conversation.append(
-    {
-        "role": "assistant",
-        "content": greeting
-    }
-)
-
-
-empty = 0
-
-
-# ------------------
-# MAIN LOOP
-# ------------------
-
-while True:
-
-    user = listen()
-
-    if user == "":
-
-        empty += 1
-
-        if empty >= 2:
-
-            speak(
-                "It seems we got disconnected. Goodbye."
-            )
-
+        if data is None:
+            print("Browser disconnected")
             break
 
-        speak(
-            "I could not hear you clearly. Please repeat."
-        )
+        if data == "END_CALL":
+            print("Candidate ended the call.")
 
-        continue
+            reply = "Thank you for your time. Goodbye."
+            speak(reply)
 
-    empty = 0
+            ws.send("END_CALL||" + reply)
+            break
 
-    user_lower = user.lower()
+        if isinstance(data, bytes):
+            print("Audio received")
 
-    if (
-        "bye" in user_lower
-        or "goodbye" in user_lower
-        or "stop" in user_lower
-        or "exit" in user_lower
-        or "end call" in user_lower
-    ):
+            with open("recordings/input.webm", "wb") as f:
+                f.write(data)
 
-        speak(
-            "Thank you for your time. Goodbye."
-        )
+            convert_to_wav()
 
-        break
+            if not check_speech_from_wav():
+                ws.send("AI||I could not detect clear speech. Please repeat.")
+                continue
 
-    conversation.append(
-        {
-            "role": "user",
-            "content": user
-        }
-    )
+            user_text = transcribe_audio("recordings/input.wav")
 
-    try:
+            if not user_text.strip():
+                ws.send("AI||I could not understand that. Please repeat.")
+                continue
 
-        response = (
-            client
-            .chat
-            .completions
-            .create(
-                model="llama-3.3-70b-versatile",
-                messages=conversation
-            )
-        )
+            print("Candidate:", user_text)
 
-        reply = (
-            response
-            .choices[0]
-            .message
-            .content
-        )
+            reply = generate_reply(user_text)
+            print("AI:", reply)
 
-    except Exception as e:
+            speak(reply)
 
-        print(e)
+            end_phrases = [
+                "your interview has been scheduled successfully",
+                "thank you for your time. goodbye",
+                "goodbye"
+            ]
 
-        reply = (
-            "Sorry, I encountered an issue."
-        )
+            if any(phrase in reply.lower() for phrase in end_phrases):
+                ws.send("END_CALL||" + reply)
+                break
+            else:
+                ws.send("AI||" + reply)
 
-    conversation.append(
-        {
-            "role": "assistant",
-            "content": reply
-        }
-    )
-
-    speak(
-        reply
-    )
-
-    ai_reply = (
-        reply.lower()
-    )
-
-    if (
-        "goodbye" in ai_reply
-        or
-        "thank you for your time"
-        in ai_reply
-    ):
-
-        print(
-            "\nCall ended."
-        )
-
-        break
+        else:
+            print("Message:", data)
 
 
-pygame.quit()
-
-print(
-    "\nProgram stopped."
-)
+if __name__ == "__main__":
+    app.run(debug=True)

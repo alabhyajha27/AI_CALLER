@@ -1,0 +1,155 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.app-container {
+    width: 760px;
+    height: 92vh;
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.header {
+    text-align: center;
+}
+
+.header h1 {
+    font-size: 32px;
+    color: #111827;
+}
+
+.header p {
+    margin-top: 6px;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.status-card {
+    background: #f3f4f6;
+    border-radius: 12px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #9ca3af;
+}
+
+.status-dot.active {
+    background: #22c55e;
+}
+
+.status-dot.busy {
+    background: #f59e0b;
+}
+
+.status-dot.ended {
+    background: #ef4444;
+}
+
+.chat-box {
+    flex: 1;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fafafa;
+    padding: 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.empty-state {
+    margin: auto;
+    color: #9ca3af;
+    text-align: center;
+    font-size: 15px;
+}
+
+.message {
+    max-width: 78%;
+    padding: 12px 14px;
+    border-radius: 14px;
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+.message strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.ai-message {
+    align-self: flex-start;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    color: #111827;
+}
+
+.user-message {
+    align-self: flex-end;
+    background: #dcfce7;
+    color: #14532d;
+}
+
+.system-message {
+    align-self: center;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 13px;
+}
+
+.controls {
+    display: flex;
+    gap: 14px;
+}
+
+.btn {
+    flex: 1;
+    border: none;
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.start-btn {
+    background: #22c55e;
+    color: white;
+}
+
+.end-btn {
+    background: #ef4444;
+    color: white;
+}
+
+.btn:disabled {
+    background: #d1d5db;
+    color: #6b7280;
+    cursor: not-allowed;
+}

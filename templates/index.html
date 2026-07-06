@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Recruiter Voice Caller</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="app-container">
+
+    <header class="header">
+        <h1>AI Recruiter</h1>
+        <p>Automated voice interview scheduling assistant</p>
+    </header>
+
+    <section class="status-card">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status">Not connected</span>
+    </section>
+
+    <section id="chat-box" class="chat-box">
+        <div class="empty-state">
+            Click Start Call to begin the interview scheduling conversation.
+        </div>
+    </section>
+
+    <section class="controls">
+        <button id="start-btn" class="btn start-btn">Start Call</button>
+        <button id="end-btn" class="btn end-btn" disabled>End Call</button>
+    </section>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
