@@ -106,6 +106,28 @@ End the call only after final confirmation or explicit exit.
 # ------------------
 # VAD
 # ------------------
+import torch
+import soundfile as sf
+from silero_vad import load_silero_vad, get_speech_timestamps
+
+print("Loading Silero VAD...")
+vad_model = load_silero_vad()
+
+def check_speech_with_silero(audio_path):
+    audio, sample_rate = sf.read(audio_path)
+
+    if len(audio.shape) > 1:
+        audio = audio.mean(axis=1)
+
+    audio_tensor = torch.tensor(audio, dtype=torch.float32)
+
+    speech_timestamps = get_speech_timestamps(
+        audio_tensor,
+        vad_model,
+        sampling_rate=sample_rate
+    )
+
+    return len(speech_timestamps) > 0
 
 def has_speech(audio):
 

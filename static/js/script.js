@@ -1,148 +1,308 @@
-const connectBtn = document.getElementById("connectBtn");
-const micBtn = document.getElementById("micBtn");
-const stopBtn = document.getElementById("stopBtn");
+const startBtn = document.getElementById("start-btn");
+const endBtn = document.getElementById("end-btn");
 const status = document.getElementById("status");
+const chatBox = document.getElementById("chat-box");
 
-let socket;
-let mediaRecorder;
+let socket = null;
+let mediaRecorder = null;
 let audioChunks = [];
+let currentStream = null;
+
+let isRecording = false;
+let isAISpeaking = false;
+let callActive = false;
+
 
 // ------------------------------------
-// ADD MESSAGE TO CHAT
+// ADD MESSAGE
 // ------------------------------------
 
 function addMessage(sender, text) {
-
-    const chat = document.getElementById("chat");
-
-    const message = document.createElement("div");
-    message.className = "message";
-
-    if (sender === "AI") {
-
-        message.innerHTML = `
-            <div class="ai">🤖 AI</div>
-            <div class="text">${text}</div>
-        `;
-
-    } else {
-
-        message.innerHTML = `
-            <div class="user">👤 Candidate</div>
-            <div class="text">${text}</div>
-        `;
-
+    if (chatBox.querySelector(".empty-state")) {
+        chatBox.innerHTML = "";
     }
 
-    chat.appendChild(message);
-    chat.scrollTop = chat.scrollHeight;
+    const message = document.createElement("div");
+
+    if (sender === "AI") {
+        message.className = "message ai-message";
+        message.innerHTML = `
+            <strong>AI</strong>
+            <div class="text">${text}</div>
+        `;
+    } else {
+        message.className = "message user-message";
+        message.innerHTML = `
+            <strong>Candidate</strong>
+            <div class="text">${text}</div>
+        `;
+    }
+
+    chatBox.appendChild(message);
+    chatBox.scrollTop = chatBox.scrollHeight;
 }
 
+
 // ------------------------------------
-// CONNECT
+// START CALL
 // ------------------------------------
 
-connectBtn.onclick = () => {
+startBtn.onclick = async () => {
+    callActive = true;
 
-    socket = new WebSocket("ws://127.0.0.1:5000/ws");
+    startBtn.disabled = true;
+    endBtn.disabled = false;
 
-    socket.onopen = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+        socket = new WebSocket("ws://127.0.0.1:5000/ws");
 
-        console.log("Connected");
+        socket.onopen = () => {
+            console.log("Connected");
+            status.innerText = "Listening...";
+            startRecording();
+        };
 
-        status.innerText = "🟢 Connected";
+        socket.onmessage = handleSocketMessage;
 
-        micBtn.disabled = false;
+        socket.onclose = () => {
+            console.log("Disconnected");
 
-    };
+            callActive = false;
+            isRecording = false;
+            isAISpeaking = false;
 
-    socket.onmessage = (event) => {
+            status.innerText = "Disconnected";
 
-        console.log("AI:", event.data);
+            startBtn.disabled = false;
+            endBtn.disabled = true;
+        };
 
-        addMessage("AI", event.data);
+    } else {
+        startRecording();
+    }
+};
 
-        status.innerText = "🔊 AI Speaking";
+
+// ------------------------------------
+// HANDLE SERVER MESSAGE
+// ------------------------------------
+
+function handleSocketMessage(event) {
+    const message = event.data;
+    console.log(message);
+
+    if (message.startsWith("END_CALL||")) {
+        const reply = message.replace("END_CALL||", "");
+
+        addMessage("AI", reply);
+        status.innerText = "AI Speaking...";
+        isAISpeaking = true;
 
         const audio = new Audio("/reply?" + Date.now());
 
-        audio.play().catch(err => console.log(err));
-
         audio.onended = () => {
+            isAISpeaking = false;
+            callActive = false;
 
-            status.innerText = "🟢 Connected";
+            status.innerText = "Call Ended";
 
+            startBtn.disabled = false;
+            endBtn.disabled = true;
+
+            stopRecordingIfActive();
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
         };
 
-    };
+        audio.play();
+        return;
+    }
 
-    socket.onclose = () => {
+    if (message.startsWith("AI||")) {
+        const reply = message.replace("AI||", "");
 
-        status.innerText = "🔴 Disconnected";
+        addMessage("AI", reply);
+        status.innerText = "AI Speaking...";
+        isAISpeaking = true;
 
-        micBtn.disabled = true;
-        stopBtn.disabled = true;
+        const audio = new Audio("/reply?" + Date.now());
 
-    };
+        audio.onended = () => {
+            isAISpeaking = false;
 
-};
+            if (callActive) {
+                status.innerText = "Listening...";
+                startRecording();
+            }
+        };
+
+        audio.play();
+        return;
+    }
+}
+
 
 // ------------------------------------
-// START RECORDING
+// RECORD AUDIO
 // ------------------------------------
 
-micBtn.onclick = async () => {
+async function startRecording() {
+    if (!callActive || isRecording || isAISpeaking) {
+        return;
+    }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true
-    });
-
-    audioChunks = [];
-
-    mediaRecorder = new MediaRecorder(stream);
-
-    mediaRecorder.ondataavailable = (event) => {
-
-        audioChunks.push(event.data);
-
-    };
-
-    mediaRecorder.onstop = () => {
-
-        const audioBlob = new Blob(audioChunks, {
-            type: "audio/webm"
+    try {
+        currentStream = await navigator.mediaDevices.getUserMedia({
+            audio: true
         });
 
-        addMessage(
-            "Candidate",
-            "🎤 Voice Message"
-        );
+        audioChunks = [];
 
-        status.innerText = "🧠 AI Thinking...";
+        mediaRecorder = new MediaRecorder(currentStream);
+        isRecording = true;
 
-        socket.send(audioBlob);
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
 
-    };
+        mediaRecorder.onstop = () => {
+            isRecording = false;
 
-    // THIS IS IMPORTANT
-    mediaRecorder.start();
+            if (!callActive) {
+                stopStream();
+                return;
+            }
 
-    status.innerText = "🎤 Recording...";
+            const blob = new Blob(audioChunks, {
+                type: "audio/webm"
+            });
 
-    micBtn.disabled = true;
-    stopBtn.disabled = false;
+            console.log("Audio blob size:", blob.size);
 
-};
+            stopStream();
+
+            if (blob.size < 1000) {
+                status.innerText = "No speech detected. Listening again...";
+                setTimeout(() => {
+                    if (callActive) startRecording();
+                }, 500);
+                return;
+            }
+
+            addMessage("Candidate", "Voice message sent");
+            status.innerText = "Processing...";
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(blob);
+            }
+        };
+
+        mediaRecorder.start();
+        status.innerText = "Recording... Speak now";
+
+        detectSilenceAndStop(currentStream);
+
+    } catch (error) {
+        console.error("Microphone error:", error);
+        status.innerText = "Microphone access denied or unavailable.";
+
+        startBtn.disabled = false;
+        endBtn.disabled = true;
+        callActive = false;
+    }
+}
+
 
 // ------------------------------------
-// STOP RECORDING
+// SILENCE DETECTION
 // ------------------------------------
 
-stopBtn.onclick = () => {
+function detectSilenceAndStop(stream) {
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
 
-    mediaRecorder.stop();
+    source.connect(analyser);
+    analyser.fftSize = 2048;
 
-    micBtn.disabled = false;
-    stopBtn.disabled = true;
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
+    let hasSpoken = false;
+    let silenceStart = null;
+
+    const silenceThreshold = 10;
+    const silenceDuration = 1500;
+
+    function checkAudio() {
+        if (!mediaRecorder || mediaRecorder.state !== "recording") {
+            audioContext.close();
+            return;
+        }
+
+        analyser.getByteFrequencyData(dataArray);
+
+        const volume =
+            dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
+
+        if (volume > silenceThreshold) {
+            hasSpoken = true;
+            silenceStart = null;
+        } else if (hasSpoken) {
+            if (!silenceStart) {
+                silenceStart = Date.now();
+            }
+
+            if (Date.now() - silenceStart > silenceDuration) {
+                mediaRecorder.stop();
+                return;
+            }
+        }
+
+        requestAnimationFrame(checkAudio);
+    }
+
+    checkAudio();
+}
+
+
+// ------------------------------------
+// END CALL
+// ------------------------------------
+
+endBtn.onclick = () => {
+    callActive = false;
+
+    status.innerText = "Ending Call...";
+
+    stopRecordingIfActive();
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send("END_CALL");
+    }
+
+    endBtn.disabled = true;
 };
+
+
+// ------------------------------------
+// HELPERS
+// ------------------------------------
+
+function stopRecordingIfActive() {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+    }
+
+    stopStream();
+}
+
+function stopStream() {
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+    }
+}

@@ -1,51 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Recruiter</title>
-
+    <title>AI Recruiter Voice Caller</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-
 <body>
 
-<div class="container">
+<div class="app-container">
 
-    <div class="card">
+    <header class="header">
+        <h1>AI Recruiter</h1>
+        <p>Automated voice interview scheduling assistant</p>
+    </header>
 
-        <h1>🤖 AI Recruiter</h1>
+    <section class="status-card">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status">Not connected</span>
+    </section>
 
-        <div id="status" class="status">
-            🔴 Disconnected
+    <section id="chat-box" class="chat-box">
+        <div class="empty-state">
+            Click Start Call to begin the interview scheduling conversation.
         </div>
+    </section>
 
-        <div id="chat" class="chat">
-
-        </div>
-
-        <div class="buttons">
-
-            <button id="connectBtn">
-                Connect
-            </button>
-
-            <button id="micBtn" disabled>
-                🎤 Start Recording
-            </button>
-
-            <button id="stopBtn" disabled>
-                ⏹ Stop Recording
-            </button>
-
-        </div>
-
-    </div>
+    <section class="controls">
+        <button id="start-btn" class="btn start-btn">Start Call</button>
+        <button id="end-btn" class="btn end-btn" disabled>End Call</button>
+    </section>
 
 </div>
 
 <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-
 </body>
 </html>
